@@ -1,0 +1,149 @@
+[project]
+name = "youtube"
+version = "1.0.0"
+description = "Video Platform"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiobotocore>=2.23.2",
+    "aiofiles>=24.1.0",
+    "aioprometheus>=23.12.0",
+    "alembic>=1.16.2",
+    "cryptography>=44.0.1",
+    "dishka>=1.6.0",
+    "fastapi>=0.115.8",
+    "faststream<0.7.0",
+    "fastapi-cache2[redis]>=0.2.2",
+    "flatten-dict>=0.4.2",
+    "overrides>=7.7.0",
+    "psycopg[binary]>=3.2.4",
+    "pydantic[email]>=2.10.6",
+    "pydantic-settings>=2.8.0",
+    "sentry-sdk[fastapi]>=2.32.0",
+    "sqlalchemy-utils>=0.41.2",
+    "sqlalchemy[asyncio]>=2.0.38",
+    "starlette-exporter>=0.23.0",
+    "taskiq>=0.12.1",
+    "stringcase>=1.2.0",
+    "structlog>=25.5.0",
+    "typer>=0.15.1",
+    "pytest>=9.0.2",
+    "httpx>=0.28.1",
+    "curl-cffi>=0.7.4",
+    "beautifulsoup4>=4.12.3",
+    "uuid6>=2025.0.1",
+    "python-slugify>=8.0.4",
+    "debugpy>=1.8.21",
+    "argon2-cffi>=25.1.0",
+    "python-multipart>=0.0.32",
+    "aiosmtplib>=5.1.2",
+    "fakeredis>=2.37.0",
+    "pillow>=12.3.0",
+    "jinja2>=3.1.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "docformatter>=1.7.5",
+    "mypy>=1.15.0",
+    "pre-commit>=4.1.0",
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.3",
+    "pytest-cov>=6.0.0",
+    "pytest-env>=1.1.5",
+    "pytest-mock>=3.14.0",
+    "pytest-sugar>=1.0.0",
+    "pytest-xdist>=3.6.1",
+    "respx>=0.22.0",
+    "ruff>=0.11.6",
+    "types-sqlalchemy-utils>=1.1.0",
+    "types-aiobotocore[support]>=2.23.0",
+    "types-sqlalchemy-utils>=1.1.0",
+]
+
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-awesome-nav>=3.1.2",
+    "mkdocs-material>=9.6.15",
+    "mkdocs-mermaid2-plugin>=1.2.3",
+    "mkdocs-toggle-sidebar-plugin>=0.0.6",
+]
+
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+target-version = "py313"
+
+
+[tool.ruff.format]
+quote-style = "single"
+
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle errors (settings from FastAPI, thanks, @tiangolo!)
+    "W", # pycodestyle warnings
+    "F", # pyflakes
+    "I", # isort
+    "C", # flake8-comprehensions
+    "B", # flake8-bugbear
+]
+ignore = [
+    "C901", # too complex
+]
+
+
+[tool.ruff.lint.isort]
+order-by-type = true
+relative-imports-order = "closest-to-furthest"
+extra-standard-library = ["typing"]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+known-first-party = []
+
+
+[tool.pytest.ini_options]
+addopts = "-vvv"
+testpaths = "tests"
+
+
+[tool.mypy]
+files = ["youtube", "tests"]
+disable_error_code = "import-untyped"
+plugins = "pydantic.mypy"
+strict_optional = false
+
+[tool.coverage.run]
+omit = [
+    "__dishka_factory_*"
+]
+
+[tool.semantic_release]
+version_toml = [
+    "pyproject.toml:project.version"
+]
+commit_message = "chore(release): {version} [skip ci]"
+branch = "main"
+upload_to_pypi = false
+upload_to_release = true
+
+[dependency-groups]
+dev = [
+    "anyio>=4.12.1",
+    "types-aiobotocore-s3>=3.1.0",
+    "types-pillow>=10.2.0.20240822",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+
+[tool.setuptools]
+packages = ["youtube", "tests"]
+

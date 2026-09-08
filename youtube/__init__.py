@@ -1,0 +1,3 @@
+"""
+FastAPI clean architecture implementation.
+"""

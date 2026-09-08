@@ -1,0 +1,84 @@
+services:
+  postgres:
+    container_name: youtube-postgres
+    image: postgres:18
+    restart: unless-stopped
+    volumes:
+      - youtube-pgdata:/var/lib/postgresql
+      - ./docker/postgres:/docker-entrypoint-initdb.d
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_DB: "youtube"
+    ports:
+      - "5433:5432"
+    healthcheck:
+      interval: 10s
+      retries: 10
+      timeout: 5s
+      test: "pg_isready -U postgres"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  minio:
+    container_name: youtube-minio
+    image: minio/minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: "admin"
+      MINIO_ROOT_PASSWORD: "12345678"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+
+  redis:
+    container_name: youtube-redis
+    image: redis:latest
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+
+  # app:
+  #   container_name: youtube-app
+  #   build:
+  #     context: .
+  #     dockerfile: DockerFile
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8000:8000"
+  #   env_file:
+  #     - .env
+  #   volumes:
+  #     - youtube-storage:/app/storage
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/health\")' || exit 1"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 10s
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.5'
+  #         memory: 1.5G
+  #       reservations:
+  #         memory: 256M
+
+volumes:
+  youtube-pgdata:
+  youtube-storage:
