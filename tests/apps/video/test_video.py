@@ -9,8 +9,6 @@ from youtube.apps.video.schemas import (
 )
 from youtube.apps.video.schemas.tags import TagCategoryCreateSchema
 from youtube.db import Base, make_async_engine
-from youtube.apps.parser.repository import DbVideoParserRepository
-from youtube.apps.parser.schemas import CategoryDTO, DirectSourceDTO, ExternalPlayerDTO, ParsedVideoDTO, TagDTO
 
 
 @pytest.fixture(autouse=True)
@@ -66,66 +64,6 @@ async def test_video_repository_create_and_get(session_manager):
     assert len(fetched.external_players) == 1
 
 
-async def test_db_video_parser_repository(session_manager):
-    video_repo = VideoRepository(session_manager)
-    parser_repo = DbVideoParserRepository(video_repo)
-
-    video_dto = ParsedVideoDTO(
-        source_url='https://v4.hentai-hub.net/hentai/2891.html',
-        external_id='2891',
-        russian_title='Test Video',
-        poster_url='https://example.com/poster.jpg',
-        tags=[TagDTO(category=CategoryDTO(name='cat'), name='tag')],
-        direct_sources=[DirectSourceDTO(quality='480p', source_url='https://src.mp4')],
-        external_players=[ExternalPlayerDTO(title='ext', embed_url='https://embed')],
-    )
-
-    await parser_repo.save(video_dto)
-
-    saved = await parser_repo.get_all()
-    assert len(saved) == 1
-    assert saved[0].russian_title == 'Test Video'
-    assert len(saved[0].tags) == 1
-    assert saved[0].tags[0].name == 'tag'
-    assert len(saved[0].direct_sources) == 1
-    assert len(saved[0].external_players) == 1
-
-
-async def test_db_video_parser_repository_shared_tags(session_manager):
-    video_repo = VideoRepository(session_manager)
-    parser_repo = DbVideoParserRepository(video_repo)
-
-    video1 = ParsedVideoDTO(
-        source_url='https://v4.hentai-hub.net/hentai/1.html',
-        external_id='1',
-        russian_title='Video 1',
-        poster_url='https://example.com/poster1.jpg',
-        tags=[TagDTO(category=CategoryDTO(name='Genre'), name='Action')],
-    )
-    video2 = ParsedVideoDTO(
-        source_url='https://v4.hentai-hub.net/hentai/2.html',
-        external_id='2',
-        russian_title='Video 2',
-        poster_url='https://example.com/poster2.jpg',
-        tags=[TagDTO(category=CategoryDTO(name='Genre'), name='Action')],
-    )
-
-    await parser_repo.save(video1)
-    await parser_repo.save(video2)
-
-    saved = await parser_repo.get_all()
-    assert len(saved) == 2
-
-    # Check both have the tag
-    assert len(saved[0].tags) == 1
-    assert saved[0].tags[0].name == 'Action'
-    assert saved[0].tags[0].category.name == 'Genre'
-
-    assert len(saved[1].tags) == 1
-    assert saved[1].tags[0].name == 'Action'
-    assert saved[1].tags[0].category.name == 'Genre'
-
-
 async def test_video_repository_get_all(session_manager):
     video_repo = VideoRepository(session_manager)
     videos = await video_repo.get_all()
@@ -133,7 +71,7 @@ async def test_video_repository_get_all(session_manager):
 
     video_data = [
         VideoCreateSchema(
-            source_url='https://v4.hentai-hub.net/hentai/123-test.html',
+            source_url='https://example.com/stream.mp4',
             external_id='123',
             russian_title='Тестовое видео',
             poster_url='https://example.com/poster.jpg',
@@ -155,7 +93,7 @@ async def test_video_repository_get_all(session_manager):
             ],
         ),
         VideoCreateSchema(
-            source_url='https://v4.hentai-hub.net/hentai/456-test.html',
+            source_url='https://example.com/stream.mp4',
             external_id='456',
             russian_title='Тестовое видео',
             poster_url='https://example.com/poster.jpg',

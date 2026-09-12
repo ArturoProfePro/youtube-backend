@@ -3,6 +3,7 @@ from dishka import Provider, Scope, provide
 from youtube.apps.video.repository import VideoRepository, VideoTagRepository, PlaylistRepository
 from youtube.apps.video.repository.watch_history import UserWatchHistoryRepository
 from youtube.apps.video.service import VideoService, VideoTagService, VideoViewService, PlaylistService
+from youtube.apps.video.service.public import VideoPublicService, ChannelService
 from youtube.db import SessionManagerProtocol
 
 
@@ -48,6 +49,14 @@ class VideoProvider(Provider):
         video_repo: VideoRepository,
     ) -> PlaylistService:
         return PlaylistService(playlist_repo, video_repo)
+
+    @provide
+    def get_video_public_service(self, session_manager: SessionManagerProtocol) -> VideoPublicService:
+        return VideoPublicService(session_manager)
+
+    @provide
+    def get_channel_service(self, session_manager: SessionManagerProtocol) -> ChannelService:
+        return ChannelService(session_manager)
 
 
 provider = VideoProvider()

@@ -127,16 +127,17 @@ async def make_db_crud_repository(
     """
     Create a repository for operations on models in the database.
     """
+    crud_tables = [CrudChildBModel.__table__, CrudChildAModel.__table__, CrudParentModel.__table__]
     async_engine = make_async_engine(settings.db.dsn)
     async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=crud_tables))
     try:
         async with make_async_session_factory(settings.db.dsn)() as session:
             await create_models(session, models_to_create)
             yield ModelDbRepository(SessionManagerImpl(session))
     finally:
         async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(lambda sync_conn: Base.metadata.drop_all(sync_conn, tables=crud_tables))
 
 
 @pytest.fixture
@@ -197,43 +198,60 @@ async def make_s3_storage_repository(
     Create an S3 storage repository. If S3 is unavailable, fallback to local storage.
     """
     params = settings.storage.s3
+    client_ctx = None
     try:
         session = aiobotocore.session.get_session()
         protocol = 'https' if params.secure else 'http'
         endpoint_url = f'{protocol}://{params.endpoint}:{params.port}'
-        async with session.create_client(
+        client_ctx = session.create_client(
             's3',
             endpoint_url=endpoint_url,
             aws_access_key_id=params.aws_access_key_id,
             aws_secret_access_key=params.aws_secret_access_key,
             region_name='',
-        ) as client:
-            # ensure bucket exists
-            try:
-                await client.head_bucket(Bucket=params.bucket)
-            except ClientError as e:
-                if e.response.get('Error', {}).get('Code') == '404':
-                    await client.create_bucket(Bucket=params.bucket)
-                else:
-                    raise
-            # upload directory contents
-            for path, item in walk_path(directory):
-                if isinstance(item, FileSchema):
-                    data = io.BytesIO(item.content)
-                    await client.put_object(
-                        Bucket=params.bucket,
-                        Key=str(path),
-                        Body=data,
-                        ContentLength=len(item.content),
-                    )
-            try:
-                yield S3StorageRepository(S3StorageParamsSchema.model_validate(settings.storage.s3.model_dump()))
-            finally:
-                await client.delete_bucket(Bucket=params.bucket)
+        )
+        client = await client_ctx.__aenter__()
+
+        # ensure bucket exists
+        try:
+            await client.head_bucket(Bucket=params.bucket)
+        except ClientError as e:
+            if e.response.get('Error', {}).get('Code') == '404':
+                await client.create_bucket(Bucket=params.bucket)
+            else:
+                raise
+        # upload directory contents
+        for path, item in walk_path(directory):
+            if isinstance(item, FileSchema):
+                data = io.BytesIO(item.content)
+                await client.put_object(
+                    Bucket=params.bucket,
+                    Key=str(path),
+                    Body=data,
+                    ContentLength=len(item.content),
+                )
     except Exception:
-        # fallback to local storage repository
+        if client_ctx:
+            try:
+                await client_ctx.__aexit__(None, None, None)
+            except Exception:
+                pass
         with make_local_storage_repository(settings, directory) as storage:
             yield storage
+        return
+
+    try:
+        yield S3StorageRepository(S3StorageParamsSchema.model_validate(settings.storage.s3.model_dump()))
+    finally:
+        try:
+            # Delete objects in bucket before deleting bucket
+            resp = await client.list_objects_v2(Bucket=params.bucket)
+            for obj in resp.get('Contents', []):
+                await client.delete_object(Bucket=params.bucket, Key=obj['Key'])
+            await client.delete_bucket(Bucket=params.bucket)
+        except Exception:
+            pass
+        await client_ctx.__aexit__(None, None, None)
 
 
 @pytest.fixture

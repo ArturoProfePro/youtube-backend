@@ -61,7 +61,7 @@ def use_middleware(
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=['http://localhost:3000', 'http://127.0.0.1:3000', *cors_origins],
+        allow_origins=['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001', 'http://127.0.0.1:3001', *cors_origins],
         allow_credentials=True,
         allow_methods=allow_methods or ['*'],
         allow_headers=allow_headers or ['*', 'Access-Control-Allow-Origin', 'Content-Type', 'Authorization'],

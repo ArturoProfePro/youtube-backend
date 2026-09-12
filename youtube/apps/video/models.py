@@ -1,13 +1,17 @@
-from youtube.apps.user.models import User
 import uuid
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from youtube.apps.user.models import User, Channel
 from youtube.db import Base
-from youtube.models import TimestampMixin, CreatedAtMixin
+from youtube.models import CreatedAtMixin, TimestampMixin
 from youtube.utils.slugify import generate_slug
+
+if TYPE_CHECKING:
+    from youtube.apps.comment.models import Comment
 
 
 video_tags_association = sa.Table(
@@ -20,45 +24,72 @@ video_tags_association = sa.Table(
 
 class Video(Base, TimestampMixin):
     """
-    SQLAlchemy model representing a parsed video.
+    SQLAlchemy model representing a video.
     """
 
     __tablename__ = 'video'
 
-    slug: Mapped[str] = mapped_column(sa.String(512), nullable=False, unique=True)
-    source_url: Mapped[str] = mapped_column(sa.String(1024), nullable=False)
-    external_id: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    public_id: Mapped[str] = mapped_column(
+        sa.String(255),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: uuid.uuid4().hex[:12],
+    )
+    title: Mapped[str] = mapped_column(sa.String(512), nullable=False, default='')
+    slug: Mapped[str] = mapped_column(sa.String(512), nullable=False, unique=True, default=lambda: uuid.uuid4().hex[:12])
+    description: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    thumbnail_url: Mapped[str] = mapped_column(sa.String(1024), default='', server_default='')
+    video_file_name: Mapped[str] = mapped_column(sa.String(512), default='', server_default='')
+    max_resolution: Mapped[str] = mapped_column(sa.String(50), default='1080p', server_default='1080p')
+    views: Mapped[int] = mapped_column(sa.Integer, default=0, server_default='0')
+    is_public: Mapped[bool] = mapped_column(sa.Boolean, default=True, server_default='true')
+    tags_list: Mapped[list[str]] = mapped_column(sa.JSON, default=list, server_default='[]')
 
-    russian_title: Mapped[str] = mapped_column(sa.String(512), nullable=False)
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey('channel.id', ondelete='CASCADE'),
+        nullable=True,
+    )
+
+    # Legacy / parser compatibility fields
+    source_url: Mapped[str] = mapped_column(sa.String(1024), nullable=False, default='', server_default='')
+    external_id: Mapped[str] = mapped_column(sa.String(255), nullable=False, default='', server_default='')
+    russian_title: Mapped[str] = mapped_column(sa.String(512), nullable=False, default='', server_default='')
     official_title: Mapped[str | None] = mapped_column(sa.String(512), nullable=True)
     other_titles: Mapped[list[str]] = mapped_column(sa.JSON, default=list, server_default='[]')
-    description: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    poster_url: Mapped[str] = mapped_column(sa.String(1024), nullable=False)
+    poster_url: Mapped[str] = mapped_column(sa.String(1024), nullable=False, default='', server_default='')
     is_censored: Mapped[bool] = mapped_column(sa.Boolean, default=False, server_default='false')
-
     duration: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     studio: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
     year: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     translation_types: Mapped[list[str]] = mapped_column(sa.JSON, default=list, server_default='[]')
-
     likes_count: Mapped[int] = mapped_column(sa.Integer, default=0, server_default='0')
     dislikes_count: Mapped[int] = mapped_column(sa.Integer, default=0, server_default='0')
     views_count: Mapped[int] = mapped_column(sa.Integer, default=0, server_default='0')
 
+    channel: Mapped[Channel | None] = relationship(
+        'Channel',
+        back_populates='videos',
+        lazy='selectin',
+    )
     likes: Mapped[list['VideoLike']] = relationship(
         'VideoLike',
         back_populates='video',
         cascade='all, delete-orphan',
-        lazy='raise',
+        lazy='selectin',
     )
-
+    comments: Mapped[list['Comment']] = relationship(
+        'Comment',
+        back_populates='video',
+        cascade='all, delete-orphan',
+        lazy='selectin',
+    )
     watch_history: Mapped[list['WatchHistory']] = relationship(
         'WatchHistory',
         back_populates='video',
         cascade='all, delete-orphan',
-        lazy='raise',
+        lazy='selectin',
     )
-
     tags: Mapped[list['VideoTag']] = relationship(
         'VideoTag',
         back_populates='videos',
@@ -78,18 +109,27 @@ class Video(Base, TimestampMixin):
         lazy='selectin',
     )
 
-    __table_args__ = (sa.UniqueConstraint('slug', 'source_url', 'external_id', name='uq_video_source_external'),)
-
 
 @event.listens_for(Video, 'before_insert')
 @event.listens_for(Video, 'before_update')
 def video_before_insert(mapper, connection, target: Video):
-    if target.slug:
-        return
-    slug: str = target.russian_title
-    if target.official_title:
-        slug = f'{slug}-{target.official_title}'
-    target.slug = generate_slug(slug)
+    if not target.public_id:
+        target.public_id = uuid.uuid4().hex[:12]
+    if not target.title and target.russian_title:
+        target.title = target.russian_title
+    if not target.russian_title and target.title:
+        target.russian_title = target.title
+    if not target.thumbnail_url and target.poster_url:
+        target.thumbnail_url = target.poster_url
+    if not target.poster_url and target.thumbnail_url:
+        target.poster_url = target.thumbnail_url
+    if not target.slug:
+        slug_src = target.title or target.russian_title or target.public_id
+        target.slug = generate_slug(slug_src) or target.public_id
+    if target.views and not target.views_count:
+        target.views_count = target.views
+    elif target.views_count and not target.views:
+        target.views = target.views_count
 
 
 class VideoLike(Base, CreatedAtMixin):
@@ -98,14 +138,14 @@ class VideoLike(Base, CreatedAtMixin):
     """
 
     __tablename__ = 'video_likes'
+
     video_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey('video.id', ondelete='CASCADE'),
-        primary_key=True,
+        nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey('user.id', ondelete='CASCADE'),
         nullable=False,
-        primary_key=True,
     )
     is_like: Mapped[bool] = mapped_column(
         sa.Boolean,
@@ -113,8 +153,10 @@ class VideoLike(Base, CreatedAtMixin):
         server_default='true',
     )
 
-    user: Mapped[User] = relationship('User', lazy='joined')
-    video: Mapped[Video] = relationship('Video', back_populates='likes')
+    user: Mapped[User] = relationship('User', back_populates='likes', lazy='selectin')
+    video: Mapped[Video] = relationship('Video', back_populates='likes', lazy='selectin')
+
+    __table_args__ = (sa.UniqueConstraint('video_id', 'user_id', name='uq_video_like_user'),)
 
 
 class WatchHistory(Base, TimestampMixin):
@@ -122,17 +164,16 @@ class WatchHistory(Base, TimestampMixin):
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey('user.id', ondelete='CASCADE'),
-        primary_key=True,
+        nullable=False,
     )
     video_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey('video.id', ondelete='CASCADE'),
-        primary_key=True,
+        nullable=False,
     )
-
     progress_seconds: Mapped[int] = mapped_column(default=0, nullable=False)
 
-    user: Mapped[User] = relationship('User', lazy='joined')
-    video: Mapped[Video] = relationship('Video', back_populates='watch_history')
+    user: Mapped[User] = relationship('User', back_populates='watch_history', lazy='selectin')
+    video: Mapped[Video] = relationship('Video', back_populates='watch_history', lazy='selectin')
 
     __table_args__ = (
         sa.UniqueConstraint(
@@ -144,10 +185,6 @@ class WatchHistory(Base, TimestampMixin):
 
 
 class TagCategory(Base):
-    """
-    SQLAlchemy model representing a tag category.
-    """
-
     __tablename__ = 'tag_category'
 
     name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
@@ -161,10 +198,6 @@ class TagCategory(Base):
 
 
 class VideoTag(Base):
-    """
-    SQLAlchemy model representing a tag associated with a video.
-    """
-
     __tablename__ = 'video_tag'
 
     name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
@@ -191,10 +224,6 @@ def video_tag_before_insert(mapper, connection, target: VideoTag):
 
 
 class VideoDirectSource(Base):
-    """
-    SQLAlchemy model representing a direct video streaming source.
-    """
-
     __tablename__ = 'video_direct_source'
 
     video_id: Mapped[uuid.UUID] = mapped_column(
@@ -210,10 +239,6 @@ class VideoDirectSource(Base):
 
 
 class VideoExternalPlayer(Base):
-    """
-    SQLAlchemy model representing an external embedded video player.
-    """
-
     __tablename__ = 'video_external_player'
 
     video_id: Mapped[uuid.UUID] = mapped_column(
@@ -230,13 +255,10 @@ class VideoExternalPlayer(Base):
 
 
 class Playlist(Base, TimestampMixin):
-    """
-    SQLAlchemy model representing a user's video playlist.
-    """
-
     __tablename__ = 'playlist'
 
     title: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    name: Mapped[str] = mapped_column(sa.String(255), nullable=False, default='', server_default='')
     description: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     is_private: Mapped[bool] = mapped_column(sa.Boolean, default=True, server_default='true')
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -244,7 +266,7 @@ class Playlist(Base, TimestampMixin):
         nullable=False,
     )
 
-    user: Mapped[User] = relationship('User', lazy='raise')
+    user: Mapped[User] = relationship('User', back_populates='playlists', lazy='selectin')
     videos: Mapped[list['PlaylistVideo']] = relationship(
         'PlaylistVideo',
         back_populates='playlist',
@@ -254,11 +276,16 @@ class Playlist(Base, TimestampMixin):
     )
 
 
-class PlaylistVideo(Base, CreatedAtMixin):
-    """
-    SQLAlchemy association model representing a video in a playlist with its position.
-    """
+@event.listens_for(Playlist, 'before_insert')
+@event.listens_for(Playlist, 'before_update')
+def playlist_before_insert(mapper, connection, target: Playlist):
+    if not target.name and target.title:
+        target.name = target.title
+    if not target.title and target.name:
+        target.title = target.name
 
+
+class PlaylistVideo(Base, CreatedAtMixin):
     __tablename__ = 'playlist_video'
 
     playlist_id: Mapped[uuid.UUID] = mapped_column(

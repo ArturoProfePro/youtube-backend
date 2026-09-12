@@ -59,7 +59,8 @@ class TokenAuthSchema(BaseSchema):
     Token authentication schema.
     """
 
-    token: str
+    access_token: str
+    token_type: str
 
 
 class TokenAuthResponseSchema(TokenAuthSchema):
@@ -77,4 +78,3 @@ class ChangePasswordSchema(BaseSchema):
 
     old_password: StrongPassword
     new_password: StrongPassword
-

@@ -2,14 +2,26 @@ from dishka.integrations.fastapi import inject
 import uuid
 from dishka import Provider, Scope, provide
 from fastapi import Request, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from youtube.apps.user.repository import AuthSessionRepository, UserRepository
 from youtube.apps.user.service import AuthService, EmailVerificationService, UserService
-from youtube.apps.user.types import CurrentUser, SessionId
+from youtube.apps.user.types import CurrentUser
 from youtube.db import SessionManagerProtocol
 from youtube.exceptions import NotAuthenticatedError
 from youtube.repositories import CacheRepositoryProtocol, StorageRepositoryProtocol
 from youtube.settings import CoreAuthSettingsSchema, CoreVerificationSettingsSchema
+
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _extract_token(request: Request) -> str | None:
+    """Extract JWT from Authorization header or accessToken cookie."""
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.lower().startswith('bearer '):
+        return auth_header[7:]
+    # fallback to cookie
+    return request.cookies.get('accessToken')
 
 
 class AuthProvider(Provider):
@@ -27,9 +39,16 @@ class AuthProvider(Provider):
 
     @provide
     async def get_auth_service(
-        self, repository: UserRepository, session_repository: AuthSessionRepository
+        self,
+        repository: UserRepository,
+        session_repository: AuthSessionRepository,
+        settings: CoreAuthSettingsSchema,
     ) -> AuthService:
-        return AuthService(repository, session_repository)
+        return AuthService(
+            repository=repository,
+            secret_key=settings.jwt_secret,
+            session_repository=session_repository,
+        )
 
     @provide
     async def get_email_verification_service(
@@ -43,6 +62,7 @@ class AuthProvider(Provider):
             cache_repository=cache_repository,
             settings=settings,
         )
+
     @provide
     async def get_user_service(
         self,
@@ -50,34 +70,32 @@ class AuthProvider(Provider):
         storage_repository: StorageRepositoryProtocol,
     ) -> UserService:
         return UserService(repository, storage_repository)
+
     @provide
-    def get_session_id(self, request: Request) -> SessionId | None:
-        session_id = request.cookies.get('session_id')
-        if not session_id:
-            return None
-        return SessionId(session_id)
+    def get_access_token(self, request: Request) -> str | None:
+        return _extract_token(request)
 
     @provide
     async def get_current_user(
         self,
-        session_id: SessionId | None,
+        token: str | None,
         auth_service: AuthService,
     ) -> CurrentUser:
-        if session_id is None:
+        if token is None:
             raise NotAuthenticatedError()
-        return CurrentUser(await auth_service.authenticate_user(session_id))
+        return CurrentUser(await auth_service.authenticate_jwt(token))
 
     @provide
     async def get_current_user_or_none(
         self,
-        session_id: SessionId | None,
+        token: str | None,
         auth_service: AuthService,
     ) -> CurrentUser | None:
-        if session_id is None:
+        if token is None:
             return None
         try:
-            return CurrentUser(await auth_service.authenticate_user(session_id))
-        except NotAuthenticatedError:
+            return CurrentUser(await auth_service.authenticate_jwt(token))
+        except (NotAuthenticatedError, Exception):
             return None
 
 

@@ -1,8 +1,9 @@
-from youtube.settings import CoreAuthSettingsSchema
+from typing import Protocol
 from uuid import UUID
 
-from youtube.repositories import CacheRepositoryProtocol
 from youtube.apps.user.exceptions import SessionInvalidError
+from youtube.repositories import CacheRepositoryProtocol
+from youtube.settings import CoreAuthSettingsSchema
 
 
 class AuthSessionRepository:

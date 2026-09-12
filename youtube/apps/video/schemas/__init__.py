@@ -24,6 +24,20 @@ from .playlist import (
     AddVideoToPlaylistSchema,
 )
 
+from youtube.schemas_api import (
+    IPaginationParams,
+    IVideoFormData,
+    IVideo,
+    IVideoFull,
+    IVideoSingleResponse,
+    IVideoStudioResponse,
+    IVideosPagination,
+    IPlaylist,
+    IPlaylistData,
+    IFileResponse,
+    IChannel,
+)
+
 __all__ = [
     'VideoTagCreateSchema',
     'VideoTagReadSchema',
@@ -47,4 +61,15 @@ __all__ = [
     'PlaylistUpdateDataSchema',
     'PlaylistVideoReadSchema',
     'AddVideoToPlaylistSchema',
+    'IPaginationParams',
+    'IVideoFormData',
+    'IVideo',
+    'IVideoFull',
+    'IVideoSingleResponse',
+    'IVideoStudioResponse',
+    'IVideosPagination',
+    'IPlaylist',
+    'IPlaylistData',
+    'IFileResponse',
+    'IChannel',
 ]

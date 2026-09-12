@@ -12,17 +12,33 @@ from .user import (
     UserUpdateSchema,
 )
 from .verification import SendVerificationRequestSchema, VerifyEmailRequestSchema
+from youtube.schemas_api import (
+    IUser,
+    IAuthData,
+    IAuthResponse,
+    ISettings,
+    IEmailVerificationRequest,
+    IResendEmailRequest,
+    IResponseUser,
+)
 
-all = [
-    UserCreateSchema,
-    UserReadSchema,
-    UserUpdateSchema,
-    UserInDbSchema,
-    UserCredentialsSchema,
-    TokenAuthSchema,
-    TokenAuthResponseSchema,
-    RegisterUserSchema,
-    SendVerificationRequestSchema,
-    VerifyEmailRequestSchema,
-    ChangePasswordSchema,
+__all__ = [
+    'UserCreateSchema',
+    'UserReadSchema',
+    'UserUpdateSchema',
+    'UserInDbSchema',
+    'UserCredentialsSchema',
+    'TokenAuthSchema',
+    'TokenAuthResponseSchema',
+    'RegisterUserSchema',
+    'SendVerificationRequestSchema',
+    'VerifyEmailRequestSchema',
+    'ChangePasswordSchema',
+    'IUser',
+    'IAuthData',
+    'IAuthResponse',
+    'ISettings',
+    'IEmailVerificationRequest',
+    'IResendEmailRequest',
+    'IResponseUser',
 ]

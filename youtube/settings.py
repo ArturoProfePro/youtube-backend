@@ -180,6 +180,10 @@ class CoreAuthSettingsSchema(BaseModel):
     cookie_max_age: int = 2592000
     session_ttl: int = 2592000
     session_prefix: str = 'session'
+    jwt_secret: str = 'yoursecretkeyherewhichisthirtytwobyteslong'
+    jwt_algorithm: str = 'HS256'
+    access_token_expire_minutes: int = 60 * 24
+    refresh_token_expire_days: int = 30
 
 
 class CoreVerificationSettingsSchema(BaseModel):

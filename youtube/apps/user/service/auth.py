@@ -1,7 +1,9 @@
-from uuid import UUID
 import asyncio
+from uuid import UUID
+from typing import Optional
 
 from argon2.exceptions import VerificationError, VerifyMismatchError
+import jwt
 
 from youtube.apps.user.exceptions import (
     InvalidCredentialsError,
@@ -9,24 +11,122 @@ from youtube.apps.user.exceptions import (
     UserAlreadyExistsError,
     UserBannedError,
 )
+from youtube.apps.user.models import User
 from youtube.apps.user.repository import AuthSessionRepository, UserRepository
 from youtube.apps.user.schemas import (
+    ChangePasswordSchema,
     RegisterUserSchema,
     UserCreateSchema,
     UserCredentialsSchema,
     UserReadSchema,
-    ChangePasswordSchema,
     UserUpdateSchema,
 )
+from youtube.exceptions import NotAuthenticatedError
 from youtube.services.cryptography.gen_session_id import generate_session_id
 from youtube.services.cryptography.hasher import dummy_hash, generate_hash, verify_hash
+from youtube.services.jwt_auth import create_access_token, create_refresh_token, decode_token
 
 
 class AuthService:
-    def __init__(self, repository: UserRepository, session_repository: AuthSessionRepository) -> None:
+    def __init__(
+        self,
+        repository: UserRepository,
+        secret_key: str = 'yoursecretkeyherewhichisthirtytwobyteslong',
+        session_repository: Optional[AuthSessionRepository] = None,
+    ) -> None:
         self.repository = repository
+        self.secret_key = secret_key
         self.session_repository = session_repository
 
+    async def register_jwt(
+        self,
+        email: str,
+        password: str,
+        username: str | None = None,
+        verification_token: str | None = None,
+    ) -> tuple[User, str, str]:
+        existing_user = await self.repository.get_model_by_email(email)
+        if existing_user is not None:
+            raise UserAlreadyExistsError(field='email')
+
+        if username is None:
+            username = email.split('@')[0]
+
+        # Check username
+        by_login = await self.repository.get_by_login(username)
+        if by_login is not None:
+            username = f"{username}_{generate_session_id(4)}"
+
+        hashed_password = generate_hash(password)
+        user = await self.repository.create_user_with_channel(
+            username=username,
+            email=email,
+            hashed_password=hashed_password,
+            verification_token=verification_token,
+        )
+
+        access_token = create_access_token(str(user.id), user.email, self.secret_key)
+        refresh_token = create_refresh_token(str(user.id), self.secret_key)
+        return user, access_token, refresh_token
+
+    async def login_jwt(self, email: str, password: str) -> tuple[User, str, str]:
+        user = await self.repository.get_model_by_email(email)
+        if user is None:
+            await asyncio.to_thread(dummy_hash, password)
+            raise InvalidCredentialsError()
+
+        hashed = str(user.hashed_password)
+        try:
+            await asyncio.to_thread(verify_hash, hash=hashed, data=password)
+        except (VerifyMismatchError, VerificationError, ValueError):
+            raise InvalidCredentialsError()
+
+        if not user.is_active:
+            raise UserBannedError()
+
+        access_token = create_access_token(str(user.id), user.email, self.secret_key)
+        refresh_token = create_refresh_token(str(user.id), self.secret_key)
+        return user, access_token, refresh_token
+
+    async def refresh_jwt(self, refresh_token_str: str) -> tuple[User, str, str]:
+        try:
+            payload = decode_token(refresh_token_str, self.secret_key)
+        except jwt.PyJWTError:
+            raise NotAuthenticatedError()
+
+        if payload.get('type') != 'refresh':
+            raise NotAuthenticatedError()
+
+        user_id_str = payload.get('sub')
+        if not user_id_str:
+            raise NotAuthenticatedError()
+
+        user = await self.repository.get_model_by_id(UUID(user_id_str))
+        if user is None or not user.is_active:
+            raise NotAuthenticatedError()
+
+        access_token = create_access_token(str(user.id), user.email, self.secret_key)
+        new_refresh_token = create_refresh_token(str(user.id), self.secret_key)
+        return user, access_token, new_refresh_token
+
+    async def authenticate_jwt(self, token: str) -> UserReadSchema:
+        try:
+            payload = decode_token(token, self.secret_key)
+        except jwt.PyJWTError:
+            raise NotAuthenticatedError()
+
+        user_id_str = payload.get('sub')
+        if not user_id_str:
+            raise NotAuthenticatedError()
+
+        user = await self.repository.get_model_by_id(UUID(user_id_str))
+        if user is None:
+            raise NotAuthenticatedError()
+        if not user.is_active:
+            raise UserBannedError()
+        return UserReadSchema.model_validate(user)
+
+    # Legacy session compatibility methods
     async def register_user(self, user: RegisterUserSchema) -> str:
         if await self.repository.get_by_login(user.email):
             raise UserAlreadyExistsError(field='email')
@@ -36,17 +136,13 @@ class AuthService:
         hashed_password = generate_hash(user.password.get_secret_value())
         session_id = await asyncio.to_thread(generate_session_id, 32)
 
-        new_user = await self.repository.create(
-            UserCreateSchema(
-                username=user.username,
-                email=user.email,
-                hashed_password=hashed_password,
-                is_active=True,
-                is_superuser=False,
-                is_verified=False,
-            )
+        new_user = await self.repository.create_user_with_channel(
+            username=user.username,
+            email=user.email,
+            hashed_password=hashed_password,
         )
-        await self.session_repository.create(session_id, new_user.id)
+        if self.session_repository:
+            await self.session_repository.create(session_id, new_user.id)
         return session_id
 
     async def login_user(self, auth: UserCredentialsSchema) -> str:
@@ -62,13 +158,14 @@ class AuthService:
             raise InvalidCredentialsError() from None
 
         session_id = await asyncio.to_thread(generate_session_id, 32)
-
-        await self.session_repository.create(session_id, user.id)
+        if self.session_repository:
+            await self.session_repository.create(session_id, user.id)
         return session_id
 
     async def authenticate_user(self, session_id: str) -> UserReadSchema:
+        if not self.session_repository:
+            raise SessionExpiredError()
         user_id = await self.session_repository.get_and_refresh(session_id)
-
         user = await self.repository.get(user_id)
         if user.is_active is False:
             raise UserBannedError()
@@ -87,4 +184,5 @@ class AuthService:
         await self.repository.update(UserUpdateSchema(id=user.id, hashed_password=new_hashed_password))
 
     async def logout(self, session_id: str) -> None:
-        await self.session_repository.delete(session_id)
+        if self.session_repository:
+            await self.session_repository.delete(session_id)

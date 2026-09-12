@@ -43,3 +43,6 @@ class CommentCreateInDbSchema(CommentCreateSchema, CreateSchema):
 
 class CommentUpdateSchema(UpdateSchema):
     content: Optional[str]
+
+
+from youtube.schemas_api import IComment, ICommentData  # noqa: E402

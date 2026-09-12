@@ -222,18 +222,21 @@ class SortingFieldNotFoundError(BusinessLogicException):
         return f'Could not find field for sorting: {self.field}'
 
 
+from fastapi.responses import JSONResponse
+
+
 async def business_logic_exception_handler(
     settings: CoreSettingsSchema, request: Request, exception: BusinessLogicException
 ) -> Response:
     """
     Handler for the base business logic exception.
     """
-    return await http_exception_handler(
-        request,
-        HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=[exception.get_schema(settings.debug).model_dump()],
-        ),
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            'message': exception.message,
+            'detail': [exception.get_schema(settings.debug).model_dump()],
+        },
     )
 
 
@@ -243,12 +246,12 @@ async def permission_denied_error_handler(
     """
     Handler for the error raised due to insufficient permissions to perform an action.
     """
-    return await http_exception_handler(
-        request,
-        HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=[error.get_schema(settings.debug).model_dump()],
-        ),
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content={
+            'message': error.message,
+            'detail': [error.get_schema(settings.debug).model_dump()],
+        },
     )
 
 
@@ -258,12 +261,12 @@ async def model_not_found_error_handler(
     """
     Handler for the error raised when a model cannot be found.
     """
-    return await http_exception_handler(
-        request,
-        HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=[error.get_schema(settings.debug).model_dump()],
-        ),
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            'message': error.message,
+            'detail': [error.get_schema(settings.debug).model_dump()],
+        },
     )
 
 
@@ -274,12 +277,12 @@ async def model_already_exists_error_handler(
     Handler for the error raised when attempting to create a model with an existing unique
     field.
     """
-    return await http_exception_handler(
-        request,
-        HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=[error.get_schema(settings.debug).model_dump()],
-        ),
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            'message': error.message,
+            'detail': [error.get_schema(settings.debug).model_dump()],
+        },
     )
 
 
@@ -289,12 +292,12 @@ async def not_authenticated_error_handler(
     """
     Handler for the error raised due to insufficient permissions to perform an action.
     """
-    return await http_exception_handler(
-        request,
-        HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=[error.get_schema(settings.debug).model_dump()],
-        ),
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content={
+            'message': error.message,
+            'detail': [error.get_schema(settings.debug).model_dump()],
+        },
     )
 
 

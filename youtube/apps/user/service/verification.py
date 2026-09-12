@@ -54,3 +54,13 @@ class EmailVerificationService:
         await self.cache_repository.clear(key=attempts_key)
         user = await self.repository.get_by_email(email)
         await self.repository.update(UserUpdateSchema(id=user.id, is_verified=True))
+
+    async def verify_by_token(self, token: str):
+        """Verify email using a JWT token stored on the user row."""
+        user = await self.repository.get_model_by_token(token)
+        if user is None:
+            raise VerificationCodeInvalidError()
+        await self.repository.update(
+            UserUpdateSchema(id=user.id, is_verified=True, verification_token=None)
+        )
+        return user

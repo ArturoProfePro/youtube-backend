@@ -44,6 +44,7 @@ class UserUpdateSchema(UpdateSchema):
     is_superuser: bool | None = None
     is_verified: bool | None = None
     avatar: str | None = None
+    verification_token: str | None = None
 
 
 class UserInDbSchema(BaseUserSchema, ReadSchema):

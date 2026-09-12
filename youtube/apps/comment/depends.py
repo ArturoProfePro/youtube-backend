@@ -17,5 +17,3 @@ class CommentProvider(Provider):
 
 
 provider = CommentProvider()
-
-

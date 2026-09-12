@@ -3,9 +3,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 
-from youtube.apps.video.routes import router as video_router
+# New JWT-based routes
+from youtube.apps.user.auth_routes import auth_router, verify_router
+from youtube.apps.user.profile_routes import user_router, watch_history_router
+from youtube.apps.video.public_routes import public_video_router, channel_router
+from youtube.apps.video.studio_routes import studio_router
+from youtube.apps.video.upload_routes import upload_router
 from youtube.apps.video.playlist_routes import router as playlist_router
-from youtube.apps.user.routes import user_router
 from youtube.apps.comment.routes import comment_router
 from youtube.container import ContainerManager
 
@@ -25,22 +29,36 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title='youtube API',
-        version='0.1.0',
+        title='YouTube Clone API',
+        version='2.0.0',
+        lifespan=lifespan,
     )
-    api_v1_router = APIRouter(prefix='/v1')
-    api_v1_router.include_router(user_router)
-    api_v1_router.include_router(video_router)
-    api_v1_router.include_router(playlist_router)
-    api_v1_router.include_router(comment_router)
+
+    routers = [
+        auth_router,
+        verify_router,
+        user_router,
+        watch_history_router,
+        public_video_router,
+        channel_router,
+        studio_router,
+        upload_router,
+        playlist_router,
+        comment_router,
+    ]
+
+    for r in routers:
+        app.include_router(r)
+
+    api_v1_router = APIRouter(prefix='/api')
+    for r in routers:
+        api_v1_router.include_router(r)
 
     from youtube.contrib.healthcheck.router import router as health_router
+    app.include_router(health_router)
+    api_v1_router.include_router(health_router)
 
-    main_api_router = APIRouter(prefix='/api')
-    main_api_router.include_router(api_v1_router)
-    main_api_router.include_router(health_router)
-
-    app.include_router(main_api_router)
+    app.include_router(api_v1_router)
 
     ContainerManager.init_for_fastapi(app)
     settings = AppSettingsSchema()
