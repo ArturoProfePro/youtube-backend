@@ -31,12 +31,19 @@ class AuthService:
     def __init__(
         self,
         repository: UserRepository,
-        secret_key: str = 'yoursecretkeyherewhichisthirtytwobyteslong',
+        access_secret_key: str = 'yoursecretkeyherewhichisthirtytwobyteslong',
+        refresh_secret_key: str | None = None,
+        secret_key: str | None = None,
         session_repository: Optional[AuthSessionRepository] = None,
     ) -> None:
         self.repository = repository
-        self.secret_key = secret_key
+        self.access_secret_key = secret_key or access_secret_key
+        self.refresh_secret_key = refresh_secret_key or self.access_secret_key
         self.session_repository = session_repository
+
+    @property
+    def secret_key(self) -> str:
+        return self.access_secret_key
 
     async def register_jwt(
         self,
@@ -65,8 +72,8 @@ class AuthService:
             verification_token=verification_token,
         )
 
-        access_token = create_access_token(str(user.id), user.email, self.secret_key)
-        refresh_token = create_refresh_token(str(user.id), self.secret_key)
+        access_token = create_access_token(str(user.id), user.email, self.access_secret_key)
+        refresh_token = create_refresh_token(str(user.id), self.refresh_secret_key)
         return user, access_token, refresh_token
 
     async def login_jwt(self, email: str, password: str) -> tuple[User, str, str]:
@@ -84,13 +91,13 @@ class AuthService:
         if not user.is_active:
             raise UserBannedError()
 
-        access_token = create_access_token(str(user.id), user.email, self.secret_key)
-        refresh_token = create_refresh_token(str(user.id), self.secret_key)
+        access_token = create_access_token(str(user.id), user.email, self.access_secret_key)
+        refresh_token = create_refresh_token(str(user.id), self.refresh_secret_key)
         return user, access_token, refresh_token
 
     async def refresh_jwt(self, refresh_token_str: str) -> tuple[User, str, str]:
         try:
-            payload = decode_token(refresh_token_str, self.secret_key)
+            payload = decode_token(refresh_token_str, self.refresh_secret_key)
         except jwt.PyJWTError:
             raise NotAuthenticatedError()
 
@@ -105,13 +112,13 @@ class AuthService:
         if user is None or not user.is_active:
             raise NotAuthenticatedError()
 
-        access_token = create_access_token(str(user.id), user.email, self.secret_key)
-        new_refresh_token = create_refresh_token(str(user.id), self.secret_key)
+        access_token = create_access_token(str(user.id), user.email, self.access_secret_key)
+        new_refresh_token = create_refresh_token(str(user.id), self.refresh_secret_key)
         return user, access_token, new_refresh_token
 
     async def authenticate_jwt(self, token: str) -> UserReadSchema:
         try:
-            payload = decode_token(token, self.secret_key)
+            payload = decode_token(token, self.access_secret_key)
         except jwt.PyJWTError:
             raise NotAuthenticatedError()
 
@@ -125,6 +132,7 @@ class AuthService:
         if not user.is_active:
             raise UserBannedError()
         return UserReadSchema.model_validate(user)
+
 
     # Legacy session compatibility methods
     async def register_user(self, user: RegisterUserSchema) -> str:

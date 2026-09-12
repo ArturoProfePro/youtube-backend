@@ -92,6 +92,20 @@ class NotAuthenticatedError(BusinessLogicException):
         return 'Not authenticated'
 
 
+class InvalidCaptchaError(BusinessLogicException):
+    """
+    Error raised when reCAPTCHA verification fails.
+    """
+
+    def __init__(self, message: str = 'Invalid reCAPTCHA token', *args: object) -> None:
+        super().__init__(*args)
+        self._message = message
+
+    @property
+    def message(self: Self) -> str:
+        return self._message
+
+
 class ModelNotFoundError(BusinessLogicException):
     """
     Error raised when a model cannot be found.

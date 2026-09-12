@@ -46,9 +46,11 @@ class AuthProvider(Provider):
     ) -> AuthService:
         return AuthService(
             repository=repository,
-            secret_key=settings.jwt_secret,
+            access_secret_key=settings.access_secret,
+            refresh_secret_key=settings.refresh_secret,
             session_repository=session_repository,
         )
+
 
     @provide
     async def get_email_verification_service(

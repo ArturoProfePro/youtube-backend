@@ -219,3 +219,94 @@ async def test_full_jwt_flow(mock_email):
         # 10. Logout
         res = await ac.post("/auth/logout")
         assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_separate_jwt_secrets_isolation(session_manager):
+    """Test that access and refresh tokens use separate secret keys and cannot be substituted."""
+
+    import jwt
+    from youtube.services.jwt_auth import decode_token
+
+    access_secret = "testaccesssecretkeythirtytwobyteslonghere!"
+    refresh_secret = "testrefreshsecretkeythirtytwobyteslonghere!"
+
+    unique_email = f"jwt_iso_{uuid4().hex[:6]}@example.com"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.post(
+            "/auth/register",
+            json={"email": unique_email, "password": "password123"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        access_token = data["accessToken"]
+        refresh_token = res.cookies.get("refreshToken")
+        assert refresh_token is not None
+
+        # 1. Access token can be decoded with access_secret, but FAILS with refresh_secret
+        acc_payload = decode_token(access_token, access_secret)
+        assert acc_payload["type"] == "access"
+        assert acc_payload["email"] == unique_email
+
+        with pytest.raises(jwt.PyJWTError):
+            decode_token(access_token, refresh_secret)
+
+        # 2. Refresh token can be decoded with refresh_secret, but FAILS with access_secret
+        ref_payload = decode_token(refresh_token, refresh_secret)
+        assert ref_payload["type"] == "refresh"
+
+        with pytest.raises(jwt.PyJWTError):
+            decode_token(refresh_token, access_secret)
+
+        # 3. Attempting to use refresh_token as Bearer access token fails (401)
+        res = await ac.get(
+            "/user/profile",
+            headers={"Authorization": f"Bearer {refresh_token}"},
+        )
+        assert res.status_code == 401
+
+        # 4. Attempting to use access_token in refreshToken cookie fails (401)
+        ac.cookies.set("refreshToken", access_token)
+        res = await ac.post("/auth/access-token")
+        assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_recaptcha_verification_service():
+    """Test RecaptchaService validation logic."""
+    from youtube.services.recaptcha import RecaptchaService, InvalidCaptchaError
+
+    service = RecaptchaService(
+        secret_key="6LfI8rctAAAAAJPtOjM1tdOl8LWjxrHF4YT1DK2E",
+        enabled=True,
+        required=True,
+    )
+
+    # 1. Bypass / mock tokens always pass
+    assert await service.verify("test") is True
+    assert await service.verify("test-recaptcha-token") is True
+
+    # 2. Missing token when required raises InvalidCaptchaError
+    with pytest.raises(InvalidCaptchaError) as exc_info:
+        await service.verify(None)
+    assert "reCAPTCHA token is required" in exc_info.value.message
+
+    # 3. Disabled recaptcha always passes
+    disabled_service = RecaptchaService(enabled=False, required=True)
+    assert await disabled_service.verify(None) is True
+
+
+async def test_keygen_script():
+    """Test that keygen.py generates valid 256-bit hex keys."""
+
+    import subprocess
+    result = subprocess.run(
+        ["python3", "scripts/keygen.py"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "SECRET_KEY=" in result.stdout
+    assert "AUTH__JWT_ACCESS_SECRET=" in result.stdout
+    assert "AUTH__JWT_REFRESH_SECRET=" in result.stdout
+

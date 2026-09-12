@@ -24,6 +24,7 @@ from youtube.schemas_api import (
     IUser,
 )
 from youtube.services.email_sender import EmailSender
+from youtube.services.recaptcha import RecaptchaService
 
 auth_router = APIRouter(prefix='/auth', tags=['auth'], route_class=DishkaRoute)
 
@@ -64,15 +65,6 @@ def _clear_tokens(response: Response) -> None:
         )
 
 
-class _AuthBody:
-    """Simple body for login/register."""
-
-    def __init__(self, email: str, password: str, username: str | None = None) -> None:
-        self.email = email
-        self.password = password
-        self.username = username
-
-
 from pydantic import BaseModel, EmailStr
 
 
@@ -82,8 +74,19 @@ class AuthBody(BaseModel):
     username: str | None = None
     passwordConfirmation: str | None = None
     password_confirmation: str | None = None
+    recaptcha: str | None = None
+    recaptchaToken: str | None = None
 
     model_config = {'extra': 'ignore'}
+
+
+def _extract_recaptcha_token(request: Request, body: AuthBody) -> str | None:
+    return (
+        request.headers.get('recaptcha')
+        or request.headers.get('x-recaptcha-token')
+        or body.recaptcha
+        or body.recaptchaToken
+    )
 
 
 @auth_router.post('/register', status_code=status.HTTP_200_OK, response_model=IAuthResponse)
@@ -92,11 +95,16 @@ async def register(
     response: Response,
     request: Request,
     auth_service: FromDishka[AuthService],
+    recaptcha_service: FromDishka[RecaptchaService],
     background_tasks: BackgroundTasks,
     email_sender: FromDishka[EmailSender],
     verification_service: FromDishka[EmailVerificationService],
 ) -> IAuthResponse:
     """Register a new user. Returns IAuthResponse with accessToken."""
+    recaptcha_token = _extract_recaptcha_token(request, body)
+    remote_ip = request.client.host if request.client else None
+    await recaptcha_service.verify(recaptcha_token, remote_ip=remote_ip)
+
     username = body.username or body.email.split('@')[0]
     verification_token = secrets.token_urlsafe(32)
     user, access_token, refresh_token = await auth_service.register_jwt(
@@ -128,10 +136,16 @@ async def register(
 @auth_router.post('/login', status_code=status.HTTP_200_OK, response_model=IAuthResponse)
 async def login(
     body: AuthBody,
+    request: Request,
     response: Response,
     auth_service: FromDishka[AuthService],
+    recaptcha_service: FromDishka[RecaptchaService],
 ) -> IAuthResponse:
     """Login user. Returns IAuthResponse with accessToken."""
+    recaptcha_token = _extract_recaptcha_token(request, body)
+    remote_ip = request.client.host if request.client else None
+    await recaptcha_service.verify(recaptcha_token, remote_ip=remote_ip)
+
     user, access_token, refresh_token = await auth_service.login_jwt(
         email=body.email,
         password=body.password,
@@ -141,6 +155,7 @@ async def login(
         user=IUser(id=str(user.id), username=user.username, email=user.email),
         accessToken=access_token,
     )
+
 
 
 @auth_router.post('/access-token', status_code=status.HTTP_200_OK, response_model=IAuthResponse)

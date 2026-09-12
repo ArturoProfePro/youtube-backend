@@ -1,4 +1,8 @@
-.PHONY=migrate,revision,dev,test,docker-up,docker-down,docker-build
+.PHONY=migrate,revision,dev,test,docker-up,docker-down,docker-build,keygen
+
+keygen:
+	uv run python scripts/keygen.py $(ARGS)
+
 
 test:
 	uv run pytest --cov-report html --cov=youtube tests

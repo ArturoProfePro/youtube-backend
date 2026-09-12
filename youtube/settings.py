@@ -181,9 +181,31 @@ class CoreAuthSettingsSchema(BaseModel):
     session_ttl: int = 2592000
     session_prefix: str = 'session'
     jwt_secret: str = 'yoursecretkeyherewhichisthirtytwobyteslong'
+    jwt_access_secret: str | None = None
+    jwt_refresh_secret: str | None = None
+    refresh_jwt_secret: str | None = None
     jwt_algorithm: str = 'HS256'
     access_token_expire_minutes: int = 60 * 24
     refresh_token_expire_days: int = 30
+
+    @property
+    def access_secret(self) -> str:
+        return self.jwt_access_secret or self.jwt_secret
+
+    @property
+    def refresh_secret(self) -> str:
+        return self.jwt_refresh_secret or self.refresh_jwt_secret or self.jwt_secret
+
+
+class CoreRecaptchaSettingsSchema(BaseModel):
+    """
+    reCAPTCHA settings schema.
+    """
+
+    secret_key: str = '6LfI8rctAAAAAJPtOjM1tdOl8LWjxrHF4YT1DK2E'
+    verify_url: str = 'https://www.google.com/recaptcha/api/siteverify'
+    enabled: bool = True
+    required: bool = False
 
 
 class CoreVerificationSettingsSchema(BaseModel):
@@ -216,3 +238,5 @@ class AppSettingsSchema(CoreSettingsSchema):
     auth: CoreAuthSettingsSchema
     verify: CoreVerificationSettingsSchema
     email: CoreEmailSettingsSchema
+    recaptcha: CoreRecaptchaSettingsSchema = Field(default_factory=CoreRecaptchaSettingsSchema)
+

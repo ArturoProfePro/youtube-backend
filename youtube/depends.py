@@ -3,6 +3,7 @@ Module containing dependencies.
 """
 
 from youtube.services.email_sender import EmailSender
+from youtube.services.recaptcha import RecaptchaService
 
 from redis import Redis
 
@@ -50,6 +51,7 @@ from .settings import (
     CoreStorageSettingsSchema,
     CoreVerificationSettingsSchema,
     CoreEmailSettingsSchema,
+    CoreRecaptchaSettingsSchema,
 )
 
 
@@ -261,6 +263,22 @@ class CoreProvider(Provider):
         RedisManager.init(settings.redis_dsn)
         assert RedisManager.redis is not None
         return RedisLockService(RedisManager.redis)
+
+    @provide(scope=Scope.APP)
+    @staticmethod
+    async def get_recaptcha_settings(
+        settings_repository: SettingsRepositoryProtocol,
+    ) -> CoreRecaptchaSettingsSchema:
+        return await settings_repository.get(CoreRecaptchaSettingsSchema)
+
+    @provide
+    def get_recaptcha_service(self, settings: CoreRecaptchaSettingsSchema) -> RecaptchaService:
+        return RecaptchaService(
+            secret_key=settings.secret_key,
+            verify_url=settings.verify_url,
+            enabled=settings.enabled,
+            required=settings.required,
+        )
 
     @provide
     def get_email_sender(self, settings: CoreEmailSettingsSchema) -> EmailSender:
